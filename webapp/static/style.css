@@ -1,0 +1,163 @@
+:root {
+  --bg: #f6f7f9; --panel: #fff; --ink: #1a1d21; --muted: #6b7280;
+  --line: #e5e7eb; --accent: #0f766e; --star: #dc2626; --warn: #b45309;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font: 14px/1.5 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+
+/* ---- setup wizard ---- */
+#setup { max-width: 620px; margin: 0 auto; padding: 48px 24px; }
+#setup h1 { font-size: 22px; margin: 0 0 6px; }
+#setup .lead { color: var(--muted); margin: 0 0 28px; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+.step.done { border-color: var(--accent); }
+.step h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.step .badge { width: 22px; height: 22px; border-radius: 50%; background: var(--line); color: var(--ink); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.step.done .badge { background: var(--accent); color: #fff; }
+.step p { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
+.bar > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.msg { font-size: 13px; margin-top: 8px; }
+.msg.err { color: var(--star); }
+.msg.ok { color: var(--accent); }
+
+/* ---- explorer ---- */
+#app { display: none; height: 100vh; }
+#app.on { display: flex; }
+#sidebar { width: 390px; flex: none; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px; }
+#map { flex: 1; }
+h1.title { font-size: 16px; margin: 0; }
+.sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+h2.sec { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.ctl { margin-bottom: 10px; }
+.ctl label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.ctl input[type=range] { width: 100%; }
+.ctl .val { float: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+select, input[type=text], input[type=time], input[type=password] { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: #fff; color: var(--ink); }
+button { font: inherit; padding: 6px 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
+button:hover { background: #f3f4f6; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+button.tiny { padding: 2px 6px; font-size: 12px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.row { display: flex; gap: 6px; align-items: center; }
+.row > * { min-width: 0; }
+.stat { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted var(--line); }
+.stat b { font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; background: #eef2ff; color: #3730a3; margin: 2px 3px 2px 0; }
+.pill.shuttle { background: #fef3c7; color: #92400e; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.card.prio { border-color: var(--star); background: #fef2f2; }
+.card h3 { margin: 0 0 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.card .meta { color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); font-style: italic; padding: 8px 0; font-size: 13px; }
+.hint { font-size: 12px; color: var(--muted); background: #f9fafb; border-left: 3px solid var(--accent); padding: 8px; border-radius: 0 6px 6px 0; margin-bottom: 12px; }
+.dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+.star-icon { color: var(--star); font-size: 20px; text-shadow: 0 0 3px #fff, 0 0 3px #fff; line-height: 1; }
+.scroll-list { max-height: 300px; overflow-y: auto; }
+.warn { color: var(--warn); }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 9999; }
+#toast.on { opacity: .93; }
+@media (max-width: 780px) { #app.on { flex-direction: column; } #sidebar { width: 100%; height: 46%; } #map { height: 54%; } }
+
+/* ---- mode toggles ---- */
+.chk { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; user-select: none; }
+.chk input[type=checkbox] { width: 15px; height: 15px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.chk input:disabled { cursor: not-allowed; }
+.chk input:disabled + span { opacity: .45; }
+.ctl.indent { margin: 2px 0 10px 23px; padding-left: 8px; border-left: 2px solid var(--line); }
+#starRuleHint { margin-top: 4px; }
+
+/* ---- geocode result picker ---- */
+.pick-list { margin-top: 6px; }
+button.pick { display: block; width: 100%; text-align: left; padding: 6px 8px; margin-bottom: 4px; line-height: 1.35; }
+button.pick b { display: block; font-size: 13px; }
+button.pick span { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- disabled shuttle point ---- */
+.card.off { background: #fafafa; }
+.card.off input[type=text], .card.off input[type=time] { color: var(--muted); }
+.card h3 input[type=checkbox] { width: 15px; height: 15px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.pill.rail { font-weight: 600; }
+.note { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.ctl.indent .chk { padding: 3px 0; font-size: 13px; }
+.way { margin: 2px 0 2px 2px; line-height: 1.5; }
+
+.tag { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); }
+/* the headline number on the probe card: estimated door-to-door minutes */
+.card .big { font-size: 16px; font-weight: 700; margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
+
+/* manual / AI switch */
+.seg { display: flex; margin: 14px 0 10px; border: 1px solid var(--line, #d1d5db); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 7px 0; font-weight: 600; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#aiPanel textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; resize: vertical; margin: 4px 0 6px; }
+#aiPanel label { font-weight: 600; font-size: 13px; }
+#aiResult { margin-top: 10px; }
+.understood { font-size: 13px; margin: 0 0 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; margin: 0 4px 4px 0; border-radius: 99px; background: #ecfdf5; color: #065f46; font-size: 12px; }
+.chip button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 4px; font-size: 12px; line-height: 1; }
+.count { font-weight: 700; margin: 6px 0; }
+.summary { font-size: 13px; line-height: 1.6; margin: 8px 0 0; }
+#aiUnsupported:empty, #aiSummary:empty { display: none; }
+/* the hidden attribute must win over any display rule above */
+[hidden] { display: none !important; }
+
+/* ---- things that open and close ----
+   Two looks, and only two, so people learn them once:
+   - .fold  a whole section: a bordered box whose header is shaded, with the
+            current values on the right and a chevron that points down when
+            closed and up when open. Static headings (h2.sec) are plain
+            uppercase labels with a rule under them, so the two never look alike.
+   - .more  "show the rest" inside a card: accent-coloured text with a chevron,
+            like a link.
+   The old style was body text with a 10px ▸ -- it read as a bullet point, and
+   people could not tell which headings opened (2026-09-23). */
+details.fold { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; background: var(--panel); }
+details.fold > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  cursor: pointer; background: #f3f4f6; border-radius: 7px; font-weight: 600; font-size: 13px; user-select: none; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after { content: ""; flex: none; width: 7px; height: 7px; margin: -4px 2px 0 0;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .15s; }
+details.fold[open] > summary::after { transform: rotate(-135deg); margin-top: 4px; }
+details.fold[open] > summary { border-bottom: 1px solid var(--line); border-radius: 7px 7px 0 0; }
+details.fold > summary:hover { background: #e5e7eb; }
+details.fold > summary:hover::after { border-color: var(--accent); }
+details.fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fold-meta { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 12px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.fold-body { padding: 10px 12px 4px; }
+
+/* the workplace card: same fold, but the header is the answer ("City Hall")
+   and the action is spelled out */
+details.fold.place { margin-top: 10px; }
+details.fold.place > summary { background: #f0fdfa; align-items: flex-start; padding: 10px 12px; }
+details.fold.place > summary:hover { background: #ccfbf1; }
+details.fold.place > summary::after { display: none; }
+.place-icon { font-size: 18px; line-height: 1.2; }
+.place-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.place-label { font-size: 11px; font-weight: 400; color: var(--muted); }
+.place-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-addr { font-size: 12px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold-action { flex: none; align-self: center; font-size: 12px; font-weight: 600; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 99px; padding: 2px 10px; background: #fff; }
+.fold-action::after { content: " ▾"; }
+details[open] > summary .fold-action::after { content: " ▴"; }
+details:not([open]) .if-open, details[open] .if-closed { display: none; }
+/* shown in place of the address while the workplace is still the seed */
+.nudge { font-size: 12px; font-weight: 600; color: var(--warn); white-space: normal; }
+
+details.more { font-size: 12px; color: var(--muted); margin-top: 6px; }
+details.more > summary { list-style: none; cursor: pointer; color: var(--accent); font-weight: 600; display: inline-block; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: " ▾"; }
+details.more[open] > summary::after { content: " ▴"; }
+details.more > summary:hover { text-decoration: underline; }
+details.more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* header row: title + language switch */
+.head-row { display: flex; align-items: center; gap: 8px; }
+.head-row h1 { flex: 1; min-width: 0; }
+.lang-btn { flex: none; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 99px; }
+.indent-meta { margin: -2px 0 6px 23px; }

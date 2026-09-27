@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+data/raw/*.json
+!data/raw/.gitkeep
+# your saved setup names where you live and work
+data/processed/*.json
+!data/processed/.gitkeep
+output/*.html
+output/*.csv
+output/*.md
+.venv/
+.DS_Store
+.env-backups/

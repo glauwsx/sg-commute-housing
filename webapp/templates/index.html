@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SG 通勤租屋互動探索器</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<script src="/static/vendor/leaflet.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<!-- Text in both languages: the Chinese is the element's own content, the
+     English sits in data-en (data-en-ph / -title / -aria for attributes).
+     app.js swaps them; see setLang(). Only leaf elements carry data-en, so a
+     swap never wipes out a child that has an id. -->
+
+<!-- ===== Step 0: setup wizard (hidden once data is ready) ===== -->
+<div id="setup">
+  <div class="head-row">
+    <h1 data-en="SG commute &amp; housing explorer">SG 通勤租屋互動探索器</h1>
+    <button type="button" class="lang-btn" data-lang-toggle>EN</button>
+  </div>
+  <p class="lead" data-en="Enter where you work and find the places in Singapore with the easiest commute: direct bus, direct MRT and company shuttle are all counted, and each can be switched off. Everything happens on this page; no commands to run.">輸入你的上班地點，找出通勤最方便的租屋區域 — 公車直達、捷運直達、公司廠車三種方式都能算，也都能各自關掉。全程在這個介面操作，不需要跑任何指令。</p>
+
+  <div class="step" id="stepKey">
+    <h2><span class="badge">1</span> <span>LTA DataMall API Key</span></h2>
+    <p data-en="Free: &lt;a href=&quot;https://datamall.lta.gov.sg/&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;datamall.lta.gov.sg&lt;/a&gt; → sign up → request an API Access Key (arrives by email). Paste it here and press Verify; it is then saved to &lt;code&gt;.env&lt;/code&gt; so you only do this once.">免費申請：<a href="https://datamall.lta.gov.sg/" target="_blank" rel="noopener">datamall.lta.gov.sg</a> → 註冊 → 申請 API Access Key（信箱收信）。貼進來按驗證，成功後會自動存到 <code>.env</code>，下次不用再輸入。</p>
+    <div class="row">
+      <input type="password" id="keyInput" placeholder="貼上你的 API key" data-en-ph="Paste your API key">
+      <button class="primary" id="btnKey" style="flex:none" data-en="Verify &amp; save">驗證並儲存</button>
+    </div>
+    <div class="msg" id="keyMsg"></div>
+  </div>
+
+  <div class="step" id="stepData">
+    <h2><span class="badge">2</span> <span data-en="Download the transit network">下載交通路網資料</span></h2>
+    <p data-en="Bus stops and routes come from LTA DataMall (about 5,000 stops / 26,000 route-stop rows); MRT and LRT stations from OneMap (about 190). Downloaded once, then cached on this computer.">公車站牌與路線來自 LTA DataMall（約 5,000 站牌 / 26,000 筆路線站序）；捷運與輕軌站點來自 OneMap（約 190 站）。只需下載一次，之後會快取在本機。</p>
+    <div class="row">
+      <button class="primary" id="btnFetch" data-en="Start download">開始下載</button>
+      <button id="btnRefetch" data-en="Download again (refresh)">重新下載（更新資料）</button>
+    </div>
+    <div class="bar"><div id="fetchBar"></div></div>
+    <div class="msg" id="fetchMsg"></div>
+  </div>
+
+  <div class="step" id="stepGo">
+    <h2><span class="badge">3</span> <span data-en="Start exploring">開始探索</span></h2>
+    <p data-en="Once the data is ready you can open the interactive map. Workplace, commute modes, shuttle pickups, radii and time limits can all be changed there, live.">資料就緒後就能進入互動地圖。上班地點、通勤方式、廠車點、半徑、接駁與單程時間上限全部都能在畫面上即時調整。</p>
+    <button class="primary" id="btnGo" disabled>進入探索器</button>
+  </div>
+</div>
+
+<!-- ===== The interactive explorer ===== -->
+<div id="app">
+  <div id="sidebar">
+    <div class="head-row">
+      <h1 class="title" data-en="Commute &amp; housing explorer">通勤租屋探索器</h1>
+      <button type="button" class="lang-btn" id="langToggle" data-lang-toggle>EN</button>
+    </div>
+
+    <!-- The one thing every new user has to change, so it is a card at the top
+         with its own "change" button rather than a heading among the settings. -->
+    <details class="fold place" id="companySection">
+      <summary>
+        <span class="place-icon" aria-hidden="true">🏢</span>
+        <span class="place-text">
+          <span class="place-label" data-en="Workplace">上班地點</span>
+          <b id="companyNameLine"></b>
+          <span class="place-addr" id="companyAddrLine"></span>
+          <span class="nudge" id="companyNudge" hidden data-en="Sample location: set it to where you work">示範用的預設地點，請換成你的上班地點</span>
+        </span>
+        <span class="fold-action"><span class="if-closed" data-en="Change">更改</span><span class="if-open" data-en="Done">完成</span></span>
+      </summary>
+      <div class="fold-body">
+        <div class="ctl">
+          <label for="addrInput" data-en="Search address / building / postcode / MRT station">搜尋地址 / 大樓 / 郵遞區號 / 捷運站</label>
+          <div class="row">
+            <input type="text" id="addrInput" placeholder="例如 1 Raffles Place、Suntec、018989" data-en-ph="e.g. 1 Raffles Place, Suntec, 018989">
+            <button id="btnAddr" style="flex:none" data-en="Search">搜尋</button>
+          </div>
+          <div class="msg" id="addrMsg"></div>
+          <div id="addrResults" class="pick-list"></div>
+        </div>
+        <div class="ctl">
+          <label for="companyName" data-en="Name">名稱</label>
+          <input type="text" id="companyName" placeholder="例如：我的公司" data-en-ph="e.g. My office">
+        </div>
+        <div class="ctl">
+          <label for="latlonInput" data-en="Or enter coordinates (lat, lon)">或直接填座標（lat, lon）</label>
+          <div class="row">
+            <input type="text" id="latlonInput" placeholder="1.29294, 103.85259">
+            <button id="btnLatLon" style="flex:none" data-en="Apply">套用</button>
+          </div>
+        </div>
+        <p class="meta" data-en="You can also drag the blue pin on the map.">也可以直接拖曳地圖上的藍色圖釘。</p>
+      </div>
+    </details>
+
+    <p class="hint" id="mapHint" data-en="Click anywhere on the map = pretend you live there; the sidebar works out the commute. Pins can be dragged.">點地圖任一處 ＝ 假設住在那裡，側欄即時試算。圖示都可以拖曳。</p>
+
+    <div class="seg" role="group" aria-label="篩選方式" data-en-aria="Filter mode">
+      <button id="tabManual" type="button" data-en="Manual">手動</button>
+      <button id="tabAi" type="button">AI</button>
+    </div>
+
+    <div id="aiPanel" hidden>
+      <div id="aiKeyBox">
+        <label for="aiKeyInput">Gemini API key</label>
+        <div class="row">
+          <input type="password" id="aiKeyInput" placeholder="貼上 key" data-en-ph="Paste key" autocomplete="off">
+          <button id="btnAiKey" class="primary" style="flex:none" data-en="Save">儲存</button>
+        </div>
+        <div class="meta"><span data-en="Free:">免費申請：</span><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></div>
+        <div class="msg" id="aiKeyMsg"></div>
+      </div>
+      <div id="aiAskBox">
+        <textarea id="aiInput" rows="3" placeholder="想住怎樣的地方？例如：45 分鐘內到公司、不用轉車、班次要多、不要 Woodlands" data-en-ph="What kind of place? e.g. under 45 min to work, no transfers, frequent buses, not Woodlands"></textarea>
+        <button id="btnAsk" class="primary" data-en="Find areas">找區域</button>
+        <div class="msg" id="aiMsg"></div>
+      </div>
+      <div id="aiResult" hidden>
+        <p class="understood" id="aiUnderstood"></p>
+        <div id="aiChips"></div>
+        <p class="warn" id="aiUnsupported"></p>
+        <p class="count" id="aiCount"></p>
+        <button id="btnAiCompare" class="tiny" data-en="Ask AI to compare the top 5">請 AI 比較前 5 名</button>
+        <p class="summary" id="aiSummary"></p>
+      </div>
+    </div>
+
+    <div id="manualPanel">
+      <h2 class="sec" data-en="How you get to work">怎麼去上班</h2>
+      <label class="chk"><input type="checkbox" id="modeBus"><span data-en="🚌 Direct bus">🚌 公車直達</span></label>
+      <label class="chk"><input type="checkbox" id="modeRail"><span data-en="🚆 Direct MRT">🚆 捷運直達</span></label>
+      <label class="chk"><input type="checkbox" id="modeTransfer"><span data-en="🔁 One transfer">🔁 轉乘一次</span></label>
+      <label class="chk"><input type="checkbox" id="modeShuttle"><span data-en="🚐 Company shuttle">🚐 公司廠車</span></label>
+      <div class="meta indent-meta" id="shuttleEmptyHint" hidden data-en="No pickup points yet. Add one under “Shuttle pickup points” below.">還沒有上車點 — 在下方「廠車上車點」新增。</div>
+
+      <div class="ctl">
+        <label for="maxTotal"><span data-en="One way at most">單程最多</span> <span class="val" id="vMaxTotal"></span></label>
+        <input type="range" id="maxTotal" min="20" max="120" step="5">
+      </div>
+      <div class="ctl">
+        <label for="starRule" data-en="⭐ How many modes must work">⭐ 要符合幾種方式</label>
+        <select id="starRule">
+          <option value="any" data-en="Any one">任一種就好</option>
+          <option value="two" data-en="At least two">至少兩種</option>
+          <option value="all" data-en="All of them">全部都要</option>
+        </select>
+        <div class="meta" id="starRuleHint"></div>
+      </div>
+
+      <details class="fold" id="moreOpts">
+        <summary><span class="fold-title" data-en="More settings">更多設定</span><span class="fold-meta" id="moreMeta"></span></summary>
+        <div class="fold-body">
+          <div class="ctl" id="railOpts">
+            <label for="railTransfers"><span data-en="MRT line changes allowed">捷運內部允許轉線</span> <span class="val" id="vTransfers"></span></label>
+            <input type="range" id="railTransfers" min="0" max="2" step="1">
+          </div>
+          <div class="ctl" id="shuttleOpts">
+            <label data-en="Getting to the shuttle pickup">怎麼到廠車上車點</label>
+            <label class="chk"><input type="checkbox" id="accWalk"><span data-en="🚶 Walk there">🚶 走路過去</span></label>
+            <label class="chk"><input type="checkbox" id="accBus"><span data-en="🚌 Take a bus first">🚌 先搭公車</span></label>
+            <label class="chk"><input type="checkbox" id="accRail"><span data-en="🚆 Take the MRT first">🚆 先搭捷運</span></label>
+          </div>
+          <div class="ctl">
+            <label for="feederMin"><span data-en="First leg rides at most">接駁最多搭</span> <span class="val" id="vFeederMin"></span></label>
+            <input type="range" id="feederMin" min="2" max="20" step="1">
+            <div class="meta" id="transferOpts" data-en="Limit on the first ride for 🔁 and 🚐, time on board only. 5 min is about 3 bus stops.">🔁 與 🚐 的第一段上限，只算坐在車上。5 分鐘約公車 3 站。</div>
+          </div>
+          <div class="ctl">
+            <label for="companyR"><span data-en="“Arrived” within this of work">公司周邊算「到了」</span><span class="val" id="vCompanyR"></span></label>
+            <input type="range" id="companyR" min="100" max="1500" step="50">
+          </div>
+          <div class="ctl">
+            <label for="walkR"><span data-en="Walk from home to a stop">住家可步行到站</span> <span class="val" id="vWalkR"></span></label>
+            <input type="range" id="walkR" min="100" max="1200" step="50">
+          </div>
+          <div class="ctl">
+            <label for="routeFilter" data-en="Show only this direct route">只看這條直達路線</label>
+            <select id="routeFilter"></select>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <details class="fold" id="shuttleSection">
+      <summary><span class="fold-title" data-en="Shuttle pickup points">廠車上車點</span><span class="fold-meta" id="shuttleCount"></span></summary>
+      <div class="fold-body">
+        <div id="shuttleList"></div>
+        <div class="row">
+          <button id="btnAddShuttle" class="tiny">＋ 新增廠車點（點地圖放置）</button>
+        </div>
+      </div>
+    </details>
+
+    <h2 class="sec" id="probeTitle" data-en="If I lived here">住家試算</h2>
+    <label class="chk"><input type="checkbox" id="probeFocus"><span data-en="Only draw the routes this place can use">只畫這個位置用得到的路線</span></label>
+    <div class="meta" id="probeFocusHint"></div>
+    <div id="probe"></div>
+
+    <h2 class="sec"><span data-en="⭐ Areas worth a look">⭐ 優先候選區域</span> <span class="tag" id="prioCount"></span></h2>
+    <div id="prioList" class="scroll-list"></div>
+
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px">
+      <button id="btnFitPrio" class="primary tiny" data-en="Zoom to candidates">跳到候選</button>
+      <button id="btnExport" class="tiny" data-en="Export CSV">匯出 CSV</button>
+      <button id="btnSave" class="tiny" data-en="Save settings">儲存設定</button>
+    </div>
+
+    <details class="fold" id="diagSection">
+      <summary><span class="fold-title" data-en="Numbers &amp; other actions">診斷數字與其他動作</span></summary>
+      <div class="fold-body">
+        <div class="stat"><span data-en="Bus stops near work">公司周邊公車站牌</span><b id="sCompanyStops">–</b></div>
+        <div class="stat"><span data-en="MRT stations near work">公司周邊捷運站</span><b id="sCompanyRail">–</b></div>
+        <div class="stat"><span data-en="Direct bus routes (by direction)">直達公車（含方向）</span><b id="sDirect">–</b></div>
+        <div class="stat"><span data-en="Direct MRT lines">直達捷運線</span><b id="sRailLines">–</b></div>
+        <div class="stat"><span data-en="Stops reachable with one transfer">轉乘一次可達的站點</span><b id="sTransfer">–</b></div>
+        <div class="stat"><span data-en="⭐ candidate stops">⭐ 優先候選地點</span><b id="sPrio">–</b></div>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+          <button id="btnReset" class="tiny" data-en="Reset">重設</button>
+          <button id="btnSetup" class="tiny" data-en="Back to setup">回到設定</button>
+        </div>
+      </div>
+    </details>
+  </div>
+  <div id="map"></div>
+</div>
+
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
