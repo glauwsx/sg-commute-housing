@@ -7,6 +7,12 @@
       "runtimeArgs": ["app.py"],
       "port": 5000,
       "autoPort": true
+    },
+    {
+      "name": "public-site",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "output/site"],
+      "port": 8765
     }
   ]
 }

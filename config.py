@@ -273,7 +273,13 @@ def load_saved_setup():
     in the app and saved here. Every consumer has to read this file, or `python
     main.py` re-exports the seed workplace over whatever the user configured --
     which is exactly what the shareable single-file copy is not supposed to do.
+
+    The public website build (`main.py --public`) is the one exception: it must
+    never carry the workplace and pickups of whoever ran it, so it always opens
+    on the neutral seeds above no matter what is saved on this machine.
     """
+    if os.environ.get("SG_COMMUTE_PUBLIC") == "1":
+        return None
     if not SETUP_PATH.exists():
         return None
     try:

@@ -2,6 +2,8 @@
 
 輸入你的上班地點，找出新加坡通勤最方便的租屋區域。上班地點、通勤方式、廠車點全部可以自己設定。第一次打開停在 **City Hall（政府大廈站）** —— 刻意選一個不屬於任何人的地點，側欄會標「示範用的預設地點」，直到你換成自己的。介面有**中文／English** 兩種語言，右上角切換。
 
+**不想安裝，直接用：https://glauwsx.github.io/sg-commute-housing/**（見下面「公開網站」）
+
 作者自己的設定（上班地點＋四個廠車點）存在 `data/processed/preset-author.json`（不進 git），要用時：
 
 ```bash
@@ -253,6 +255,32 @@ python main.py --refresh  # 強制重新抓資料
 會產生 `output/explorer.html`（單檔版探索器）、`output/map.html`（folium 靜態地圖）、`output/candidates.csv` / `.md`（表格）。
 
 單檔版少掉的只有需要後端的兩件事：API key 設定與重新下載路網。
+
+## 公開網站（GitHub Pages）
+
+**https://glauwsx.github.io/sg-commute-housing/** —— 跟單檔版是同一個頁面，放在 GitHub 上，Mac 關機也能開，傳網址給別人就能用（手機也可以）。每個人的上班地點、廠車點存在自己的瀏覽器裡，互不影響；AI 模式要訪客自己貼 Gemini 免費 key（同樣只存在他的瀏覽器）。
+
+更新網站（改了程式、或想換新的公車資料時）：雙擊專案資料夾裡的 `deploy-site.command`，或
+
+```bash
+./deploy-site.command            # 用本機已下載的路網資料
+./deploy-site.command --refresh  # 先重新下載 LTA 公車資料
+```
+
+它做三件事：
+
+1. `python main.py --public` 產生 `output/site/index.html`。**一律用 `config.py` 的中性預設值**（City Hall、沒有廠車點），不管你在 app 裡存了什麼 `setup.json` —— 公開網站不能帶著你的公司和住址。也不會蓋掉你自己的 `output/explorer.html`。
+2. 上線前再檢查一次：頁面裡的上班地點不是預設值、帶了廠車點、出現 Google API key 或 `.env` 裡的任何值，就停下來不部署。
+3. 把頁面寫進 `gh-pages` 分支（只有 `index.html` 和 `.nojekyll`，不動你目前的工作目錄）並推到 `github` remote。GitHub 約 1 分鐘內更新。
+
+回到上一版：
+
+```bash
+git log --oneline gh-pages
+git push --force github <上一版的commit>:gh-pages
+```
+
+fork 這個 repo 的人跑同一支腳本，會部署到他自己的 `<帳號>.github.io/<repo>`（第一次要在 GitHub repo 的 Settings → Pages 選 `gh-pages` 分支）。
 
 ## 專案架構
 

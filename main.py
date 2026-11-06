@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 
 from dotenv import load_dotenv
@@ -25,7 +26,12 @@ from src.export_webapp import export as export_webapp
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--refresh", action="store_true", help="force re-fetch data from LTA DataMall")
+    parser.add_argument("--public", action="store_true",
+                        help="build the public website copy only (output/site/index.html), "
+                             "ignoring the setup saved on this machine")
     args = parser.parse_args()
+    if args.public:
+        os.environ["SG_COMMUTE_PUBLIC"] = "1"  # read by config.load_saved_setup()
 
     try:
         bus_stops = lta_client.get_bus_stops(force_refresh=args.refresh)
@@ -39,6 +45,11 @@ def main():
           f"{len(bus_services)} bus services.", file=sys.stderr)
 
     result = run_analysis(bus_stops, bus_routes, bus_services)
+    if args.public:
+        # its own path, so it never overwrites the personal explorer.html
+        site_path = export_webapp(result, out_path=config.OUTPUT_DIR / "site" / "index.html")
+        print(f"\nDone. Public site page: {site_path}")
+        return
     export(result)
     map_path = build_map(result)
     explorer_path = export_webapp(result)

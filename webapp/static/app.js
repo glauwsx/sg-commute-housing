@@ -945,7 +945,8 @@ function initMap() {
   // only covers Singapore, so the layer is bounded to it instead of 404ing.
   L.tileLayer("https://www.onemap.gov.sg/maps/tiles/Grey/{z}/{x}/{y}.png", {
     attribution: '<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener">OneMap</a> &copy; contributors | ' +
-      '<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener">Singapore Land Authority</a>',
+      '<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener">Singapore Land Authority</a> | ' +
+      T("公車資料", "Bus data") + ' <a href="https://datamall.lta.gov.sg/" target="_blank" rel="noopener">LTA DataMall</a>',
     minZoom: 11, maxZoom: 19, bounds: [[1.144, 103.535], [1.494, 104.502]],
   }).addTo(map);
 

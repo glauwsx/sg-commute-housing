@@ -147,7 +147,7 @@ def build_bundle(result):
     }
 
 
-def export(result):
+def export(result, out_path=None):
     bundle = build_bundle(result)
     payload = json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
 
@@ -186,7 +186,8 @@ def export(result):
         if leftover in html:
             raise RuntimeError(f"offline export still links {leftover!r} -- it would not work standalone")
 
-    out_path = config.OUTPUT_DIR / "explorer.html"
+    out_path = out_path or config.OUTPUT_DIR / "explorer.html"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(

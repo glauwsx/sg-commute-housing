@@ -12,3 +12,4 @@ output/*.md
 .venv/
 .DS_Store
 .env-backups/
+output/site/
