@@ -932,7 +932,7 @@ details.more > summary:focus-visible { outline: 2px solid var(--accent); outline
       </div>
     </details>
 
-    <p class="hint" id="mapHint" data-en="Click anywhere on the map = pretend you live there; the sidebar works out the commute. Pins can be dragged.">點地圖任一處 ＝ 假設住在那裡，側欄即時試算。圖示都可以拖曳。</p>
+    <p class="hint" id="mapHint" data-en="Click anywhere on the map (or paste a listing's address under “If I lived here”) = pretend you live there; the sidebar works out the commute. Pins can be dragged.">點地圖任一處（或在「住家試算」貼房源地址）＝ 假設住在那裡，側欄即時試算。圖示都可以拖曳。</p>
 
     <div class="seg" role="group" aria-label="篩選方式" data-en-aria="Filter mode">
       <button id="tabManual" type="button" data-en="Manual">手動</button>
@@ -1031,6 +1031,15 @@ details.more > summary:focus-visible { outline: 2px solid var(--accent); outline
     </details>
 
     <h2 class="sec" id="probeTitle" data-en="If I lived here">住家試算</h2>
+    <div class="ctl">
+      <label for="homeInput" data-en="Paste a listing's address, building name or postcode">貼上房源的地址、大樓名稱或郵遞區號</label>
+      <div class="row">
+        <input type="text" id="homeInput" placeholder="例如 Tampines Trilliant、460123" data-en-ph="e.g. Tampines Trilliant, 460123">
+        <button id="btnHome" style="flex:none" data-en="Check">查</button>
+      </div>
+      <div class="msg" id="homeMsg"></div>
+      <div id="homeResults" class="pick-list"></div>
+    </div>
     <label class="chk"><input type="checkbox" id="probeFocus"><span data-en="Only draw the routes this place can use">只畫這個位置用得到的路線</span></label>
     <div class="meta" id="probeFocusHint"></div>
     <div id="probe"></div>
@@ -1171,7 +1180,7 @@ let STOPS = {}, STOP_CODES = [], ROUTES = [], TOWNS = {};
 let RAIL_STATIONS = {}, RAIL_NAMES = [], RAIL_LINES = [], LINE_BY_CODE = {};
 let TRANSFER_WALK = 300, RAIL_WALK = 500;
 let state = null, calc = {}, map = null;
-let placingShuttle = false, addrHits = [];
+let placingShuttle = false, addrHits = [], homeHits = [];
 
 /* ---------- time model ----------
  * Estimated minutes = walk + wait + ride (+ changes). A stop count alone hides
@@ -1337,9 +1346,11 @@ async function geocodeSearch(q) {
   try {
     const r = await fetch(ONEMAP_SEARCH + "?searchVal=" + encodeURIComponent(q) +
       "&returnGeom=Y&getAddrDetails=Y&pageNum=1");
+    if (r.status === 429) return { ok: false, stop: true, results: [],
+      message: T("OneMap 說查得太快了，等幾秒再按一次。", "OneMap says too many searches; wait a few seconds and try again.") };
     raw = (await r.json()).results || [];
   } catch (e) {
-    return { ok: false, results: [], message: T("連不到 OneMap（地址搜尋需要網路，其他功能不用）。",
+    return { ok: false, stop: true, results: [], message: T("連不到 OneMap（地址搜尋需要網路，其他功能不用）。",
       "Cannot reach OneMap (address search needs the internet; nothing else does).") };
   }
   // same de-duplication as src/geocode.py: OneMap lists one row per entrance
@@ -1354,6 +1365,58 @@ async function geocodeSearch(q) {
     if (out.length >= 8) break;
   }
   return out.length ? { ok: true, results: out } : { ok: false, results: [], message: T("查無此地址。", "No match.") };
+}
+
+/* Listing text copied from anywhere -- "Blk 123 Bedok North St 2, Singapore
+ * 460123", "Tampines Trilliant (EC), 5 Tampines St 62", "3 Bedroom Condo for
+ * Rent at Parc Clematis" -- has to be cut down before OneMap matches it: a
+ * "Blk" prefix, a comma, a "(EC)" or a "D15" each turn a real address into zero
+ * results, while the postcode alone finds the exact block (measured
+ * 2026-11-06). So: postcode first, then the cleaned-up whole, then each piece. */
+const LISTING_NOISE = new RegExp("\\b(" + [
+  "blk", "block", "d\\d{1,2}", "district \\d{1,2}", "hdb", "condo(minium)?", "ec", "executive", "apartment",
+  "flat", "for rent", "for sale", "rental", "rent", "whole unit", "unit", "master room", "common room", "room",
+  "studio", "\\d+ ?(bed(room)?s?|br|bath(room)?s?)", "near", "at", "call", "whatsapp", "contact", "tel",
+].join("|") + ")\\b", "gi");
+
+function placeQueries(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  const out = [];
+  // a leftover like "S$" or "3" would match something random somewhere
+  const add = q => { q = q.replace(/\s+/g, " ").trim(); if (/[a-z]{3}|^\d{6}$/i.test(q) && !out.includes(q)) out.push(q); };
+  // a $ in front means a price, not a postcode
+  const pc = t.match(/(?:^|[^\d$])(\d{6})(?!\d)/);
+  if (pc) add(pc[1]);
+  const clean = s => s
+    .replace(/\([^)]*\)/g, " ")              // "(EC)", "(Tampines)"
+    .replace(/#\s*\d+\s*-\s*\d+\w*/g, " ")   // unit number "#05-123"
+    .replace(/s?\$\s*[\d,.]+k?/gi, " ")      // price "S$3,500"
+    .replace(/\+?65\s?[689]\d{3}\s?\d{4}\b|\b[689]\d{3}\s?\d{4}\b/g, " ")   // phone number
+    .replace(/\b[\d,.]+\s*(sq\s?ft|sqm|psf)\b/gi, " ")
+    .replace(/\bsingapore\b/gi, " ").replace(/\b\d{6}\b/g, " ")
+    .replace(LISTING_NOISE, " ")
+    .replace(/[,;|/·•–—@#:]+/g, " ");
+  add(clean(t));
+  for (const part of t.split(/[,;|/()·•–—@\n]+| - /).slice(0, 3)) add(clean(part));
+  return out.slice(0, 4);
+}
+
+/* Text -> places, for the home search and ?home=. "lat, lon" skips OneMap.
+ * One query after another, a second apart: OneMap answers 429 to the third
+ * request in a quick burst but takes one a second all day (measured). */
+async function resolvePlace(text) {
+  const ll = String(text || "").match(/^\s*(1\.\d+)\s*,\s*(10[34]\.\d+)\s*$/);
+  if (ll) return { ok: true, results: [{ lat: +ll[1], lon: +ll[2], name: null, address: "" }] };
+  let last = { ok: false, results: [], message: T("查無此地址。", "No match.") };
+  const qs = placeQueries(text);
+  for (let i = 0; i < qs.length; i++) {
+    if (i) await new Promise(r => setTimeout(r, 1000));
+    const data = await geocodeSearch(qs[i]);
+    if (data.ok && data.results.length) return { ...data, query: qs[i] };
+    if (data.stop) return data;
+    last = data;
+  }
+  return last;
 }
 
 /* ---------- setup wizard (server mode only) ---------- */
@@ -1975,6 +2038,15 @@ function startExplorer() {
   // never fire if the page is in a background tab)
   map.invalidateSize();
   map.setView([state.company.lat, state.company.lon], map.getZoom() || 12);
+
+  // ?home=<address | postcode | building | lat,lon>: opened from a listing
+  // (browser extension, phone share sheet, or a link someone sent)
+  const home = new URLSearchParams(location.search).get("home");
+  if (home && !startExplorer.homeDone) {
+    startExplorer.homeDone = true;
+    $("homeInput").value = home;
+    searchHome(home);
+  }
 }
 
 function syncControls() {
@@ -2034,9 +2106,72 @@ function initMap() {
 
   map.on("click", e => {
     if (placingShuttle) { addShuttleAt(e.latlng.lat, e.latlng.lng); return; }
-    state.probe = { lat: e.latlng.lat, lon: e.latlng.lng };
-    refresh();
+    setProbe(e.latlng.lat, e.latlng.lng, null, false);
   });
+}
+
+/* Put the trial home somewhere (lat null clears it). `label` is what the
+ * listing was called; a clicked spot gets placeName() instead. The address bar
+ * follows along as ?home=..., so the page you are looking at is a link you can
+ * send -- and the same parameter is how a browser extension or a phone's share
+ * sheet hands a listing over. */
+function setProbe(lat, lon, label, zoom = true, urlValue = null) {
+  state.probe = lat === null ? null : { lat, lon, label: label || null };
+  try {
+    const u = new URL(location.href);
+    if (state.probe) u.searchParams.set("home", urlValue || lat.toFixed(5) + "," + lon.toFixed(5));
+    else u.searchParams.delete("home");
+    history.replaceState(null, "", u);
+  } catch (e) { /* file:// pages may refuse; the link just will not follow */ }
+  // no animation: at phone width Leaflet's animated zoom never finished and
+  // the map stayed on the workplace (seen 2026-11-06 at 375 px)
+  if (state.probe && zoom) map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: false });
+  refresh();
+}
+function probeLabel() {
+  return state.probe.label || placeName(state.probe.lat, state.probe.lon);
+}
+
+function renderHomeResults() {
+  const el = $("homeResults");
+  if (!homeHits.length) { el.innerHTML = ""; return; }
+  el.innerHTML = homeHits.map((h, i) =>
+    '<button class="pick" data-hit="' + i + '"><b>' + esc(h.name) + '</b><span>' + esc(h.address) + '</span></button>').join("");
+  el.querySelectorAll("button[data-hit]").forEach(b => {
+    b.addEventListener("click", e => {
+      const h = homeHits[+e.currentTarget.dataset.hit];
+      homeHits = []; renderHomeResults();
+      $("homeMsg").innerHTML = '<span class="ok">' + esc(h.address) + '</span>';
+      setProbe(h.lat, h.lon, h.name, true, h.address);
+    });
+  });
+}
+
+async function searchHome(q) {
+  q = String(q || "").trim();
+  if (!q) return;
+  $("homeMsg").textContent = T("搜尋中…", "Searching…"); homeHits = []; renderHomeResults();
+  const data = await resolvePlace(q);
+  if (!data.ok || !data.results.length) {
+    $("homeMsg").innerHTML = '<span class="err">' + esc(data.message || T("查無此地址", "No match")) +
+      (data.stop ? "" : T(" 試試只貼郵遞區號或大樓名稱。", " Try just the postcode or the building name.")) + '</span>';
+    return;
+  }
+  // a condo comes back once per block ("THE TAMPINES TRILLIANT" x8, a few
+  // dozen metres apart): for a commute that is one place, not a choice
+  const hits = [];
+  for (const h of data.results)
+    if (!hits.some(k => k.name === h.name && haversine(k.lat, k.lon, h.lat, h.lon) < 300)) hits.push(h);
+  data.results = hits;
+  if (data.results.length === 1) {
+    const h = data.results[0];
+    $("homeMsg").innerHTML = h.address ? '<span class="ok">' + esc(h.address) + '</span>' : "";
+    setProbe(h.lat, h.lon, h.name, true, h.address || q);
+    return;
+  }
+  homeHits = data.results;
+  $("homeMsg").textContent = T("找到 " + homeHits.length + " 筆，選一個：", homeHits.length + " matches, pick one:");
+  renderHomeResults();
 }
 
 const SNAP_M = 400;   // how far a pickup point may sit from the stop it "is"
@@ -2287,7 +2422,7 @@ function renderProbeLayer() {
         .addTo(layerProbe);
   }
 
-  L.marker(home).bindTooltip(T("試算住家位置", "Trial home")).addTo(layerProbe);
+  L.marker(home).bindTooltip("🏠 " + esc(probeLabel())).addTo(layerProbe);
 }
 
 /* ---------- sidebar ---------- */
@@ -2421,7 +2556,8 @@ function renderShuttleList() {
 function renderProbe() {
   const el = $("probe"), hint = $("probeFocusHint");
   if (!state.probe) {
-    el.innerHTML = '<p class="empty">' + T("在地圖上點一個位置試算。", "Click a spot on the map to try it.") + '</p>';
+    el.innerHTML = '<p class="empty">' + T("貼上房源地址，或在地圖上點一個位置試算。",
+      "Paste a listing's address, or click a spot on the map to try it.") + '</p>';
     hint.textContent = state.ui.probeFocus ? T("先在地圖上點一個位置，才知道要留下哪些路線。",
       "Click a spot on the map first, so there is something to focus on.") : "";
     return;
@@ -2461,7 +2597,7 @@ function renderProbe() {
        M.shuttle ? T(ev.shuttle.length + " 個廠車點", ev.shuttle.length + " pickups") : ""].filter(Boolean).join(sep) +
       T("，虛線是要走過去的站牌；⭐ 候選暫時隱藏。", ". Dotted lines lead to the stops you would walk to; ⭐ are hidden meanwhile.");
 
-  let html = '<div class="card' + (isStar ? ' prio' : '') + '"><h3>' + esc(verdict) + '</h3>' +
+  let html = '<div class="card' + (isStar ? ' prio' : '') + '"><div class="meta">🏠 ' + esc(probeLabel()) + '</div><h3>' + esc(verdict) + '</h3>' +
     (best !== null ? '<div class="big">' + T("門到門最快", "Door to door, fastest ") + fmtMin(best) + '</div>' : '') +
     '<div class="meta">' + T("距公司直線 " + (distCompany / 1000).toFixed(1) + " km · 走 " + state.walkRadius + "m 內有 " +
       ev.near.length + " 個站牌、" + ev.nearRail.length + " 個捷運站",
@@ -2551,7 +2687,7 @@ function renderProbe() {
       " km/h) + " + TM.railInterchangeMin + " min per MRT line change. All estimates; check the exact minutes in Google Maps.") + '</details>';
   el.innerHTML = html;
   const clear = $("btnClearProbe");
-  if (clear) clear.addEventListener("click", () => { state.probe = null; refresh(); });
+  if (clear) clear.addEventListener("click", () => setProbe(null));
 }
 
 /* Group label: "<town> ｜ <road>", collapsed to just the road when the town
@@ -3191,6 +3327,8 @@ function wireExplorer() {
     renderAddrResults();
   });
   $("addrInput").addEventListener("keydown", e => { if (e.key === "Enter") $("btnAddr").click(); });
+  $("btnHome").addEventListener("click", () => searchHome($("homeInput").value));
+  $("homeInput").addEventListener("keydown", e => { if (e.key === "Enter") $("btnHome").click(); });
 
   $("btnLatLon").addEventListener("click", () => {
     const m = $("latlonInput").value.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
